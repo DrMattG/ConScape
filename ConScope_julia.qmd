@@ -1,0 +1,142 @@
+---
+title: "Untitled"
+format: html
+editor: visual
+---
+
+```{R}
+#| echo: false
+#| eval: false
+Julia_home<-"C:\\Users\\matthew.grainger\\AppData\\Local\\Programs\\Julia-1.8.3\\bin"
+JuliaCall::julia_setup(Julia_home)
+```
+
+```{R}
+library(raster)
+r = raster("C:/Users/matthew.grainger/Downloads/input_maps/ptarmigan_raster2.asc")
+plot(r)
+
+# Rescale the raster to the range 0-1
+rescaled_raster <- (r-1) / (6 - 0)
+plot(rescaled_raster)
+
+rescaled_raster<-rescaled_raster+0.05
+
+# Print the rescaled raster
+writeRaster(rescaled_raster, "C:/Users/matthew.grainger/Downloads/input_maps/ptarmigan_raster4.asc", format="ascii", overwrite=TRUE)
+
+
+```
+
+```{julia}
+using Pkg
+using ConScape
+using Plots
+```
+
+```{julia}
+# set folders
+datadir = joinpath(ENV["HOMEPATH"], "Downloads", "input_maps")
+outdir=joinpath(ENV["HOMEPATH"],"figures")
+```
+
+```{julia}
+# read habitat quality raster
+hab_qual, meta_q = ConScape.readasc(joinpath(datadir, "ptarmigan_raster4.asc"))
+
+# read movemement probability raster
+mov_prob, meta_p = ConScape.readasc(joinpath(datadir, "ptarmigan_raster4.asc"))
+
+
+```
+
+```{julia}
+collect(values(meta_p))[1:end .!= 3]
+collect(values(meta_p))[1:end .!= 3] == collect(values(meta_q))[1:end .!= 3]
+
+```
+
+```{julia}
+non_matches = findall(xor.(isnan.(mov_prob), isnan.(hab_qual)))
+mov_prob[non_matches] .= NaN
+hab_qual[non_matches] .= NaN;
+```
+
+```{julia}
+adjacency_matrix = ConScape.graph_matrix_from_raster(mov_prob)
+
+g = ConScape.Grid(size(mov_prob)...,
+                    affinities = adjacency_matrix,
+                    source_qualities = hab_qual,
+                    target_qualities = ConScape.sparse(hab_qual),
+                    costs = ConScape.mapnz(x -> -log(x), adjacency_matrix))
+
+coarse_target_qualities = ConScape.coarse_graining(g, 80)
+ g = ConScape.Grid(size(mov_prob)...,
+     affinities=adjacency_matrix,
+     source_qualities=hab_qual,
+     target_qualities=coarse_target_qualities,
+     costs = ConScape.mapnz(x -> -log(x), adjacency_matrix));
+```
+
+```{julia}
+ConScape.heatmap(g.source_qualities, yflip = true, 
+                    title = "Map of habitat Quality", 
+                    color = cgrad([:white, :green]))
+# savefig("figure_grid_outdeg.png")
+```
+
+```{julia}
+ConScape.plot_outdegrees(g, title = "Map of permeability to movement", color = cgrad(:acton))
+```
+
+```{julia}
+
+(g.nrows, g.ncols, g.nrows*g.ncols)
+```
+
+```{julia}
+@time h = ConScape.GridRSP(g, θ =1)
+
+```
+
+```{julia}
+kbetw = ConScape.betweenness_kweighted(h, 
+                distance_transformation=x -> exp(-x))
+
+```
+
+```{julia}
+ConScape.heatmap(kbetw, yflip=true, title="Betweenness")
+
+```
+
+```{julia}
+
+dists = ConScape.expected_cost(h)
+ConScape.plot_values(g, dists[:,130], title = "Ecological distances to target pixel t")
+
+```
+
+```{julia}
+func = ConScape.connected_habitat(h, 
+                    connectivity_function = ConScape.expected_cost,
+                    distance_transformation=x -> exp(-x/75));
+
+# func = ConScape.connected_habitat(h, distance_transformation=x -> exp(-x/75));
+```
+
+```{julia}
+ConScape.heatmap(Array(func), yflip = true, title = "Functional habitat")
+```
+
+```{julia}
+g = ConScape.perm_wall_sim(30, 60, corridorwidths=(3,2), costs=ConScape.MinusLog()) # Generate an artificial landscape
+ConScape.plot_outdegrees(g)
+```
+
+```{julia}
+h = ConScape.GridRSP(g, θ=1)
+bet_q = ConScape.betweenness_qweighted(h)
+ConScape.heatmap(bet_q, yflip=true)
+```
