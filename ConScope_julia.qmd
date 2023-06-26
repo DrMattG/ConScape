@@ -1,68 +1,107 @@
 ---
-title: "Untitled"
+title: "Modelling the potential effects of wildlife fences on the movement of grouse"
 format: html
 editor: visual
 ---
 
+## Introduction
+
+## Methods
+
+We have no tracking data on the specific populations of grouse that are present in the region, so it is difficult to make predictions on the potential negative impacts of building a wildlife-fence to restrict large mammal movements, on individuals of grouse species. We can however, model wildlife movements using principles from circuit theory which identifies the least cost pathways between two points in a map (calculated simultaneously for all points in the map).
+
+This approach takes as input data on habitat quality and habitat connectivity. Where a connectivity map is unavailable (where there has been no empirical study of connectivity) one can make the assumption that the highest quality habitat is also the most likely that the focal species will move between. The lowest quality habitat is then considered the most resistant to movement.
+
+Using so-called "random-walk" algorithms with simple rules (to try to get to the highest quality habitat in as few steps as possible) we can develop a powerful prediction of wildlife movement potential. The model can be further refined and improved with the addition of data from tracking (radio-tracking or gps tracking data on the species of interest).
+
+We use the ConScape software developed within NINA by Moorter et al. 2023). This software written and developed in the *julia* programming language, uses graph/network theory to identify the potential pathways of movement given the habitat quality and habitat permeability inputs.
+
+### Habitat quality input
+
+Habitat quality was determined by modelling the occupancy of willow grouse in summer in relation to habitat conditions in Saltfjellet.
+
 ```{R}
 #| echo: false
 #| eval: false
+# set path to Julia
 Julia_home<-"C:\\Users\\matthew.grainger\\AppData\\Local\\Programs\\Julia-1.8.3\\bin"
 JuliaCall::julia_setup(Julia_home)
 ```
 
 ```{R}
-library(raster)
-r = raster("C:/Users/matthew.grainger/Downloads/input_maps/ptarmigan_raster2.asc")
-plot(r)
+# rescale and add a little value to raster
+ library(raster)
 
-# Rescale the raster to the range 0-1
-rescaled_raster <- (r-1) / (6 - 0)
-plot(rescaled_raster)
+# r = raster("C:/Users/matthew.grainger/Downloads/input_maps/ptarmigan_rasterX.asc")
+#plot(r)
+# 
+# # Rescale the raster to the range 0-1
+# rescaled_raster <- (r) / (6 - 0)
+# plot(rescaled_raster)
+# 
+# rescaled_raster<-rescaled_raster+0.5
+# 
+# # Print the rescaled raster
 
-rescaled_raster<-rescaled_raster+0.05
-
-# Print the rescaled raster
-writeRaster(rescaled_raster, "C:/Users/matthew.grainger/Downloads/input_maps/ptarmigan_raster4.asc", format="ascii", overwrite=TRUE)
+#writeRaster(rescaled_raster, "C:/Users/matthew.grainger/Downloads/input_maps/ptarmigan_rasterX.asc", format="ascii", overwrite=TRUE)
 
 
 ```
 
 ```{julia}
+#| echo: false
+#| message: false
+#| warning: false
 using Pkg
 using ConScape
 using Plots
 ```
 
 ```{julia}
+#| echo: false
+#| message: false
+#| warning: false
+# Need to set these to the project
 # set folders
 datadir = joinpath(ENV["HOMEPATH"], "Downloads", "input_maps")
 outdir=joinpath(ENV["HOMEPATH"],"figures")
 ```
 
 ```{julia}
+#| echo: false
+#| message: false
+#| warning: false
 # read habitat quality raster
-hab_qual, meta_q = ConScape.readasc(joinpath(datadir, "ptarmigan_raster4.asc"))
+hab_qual, meta_q = ConScape.readasc(joinpath(datadir, "ptarmigan_rasterX.asc"))
 
 # read movemement probability raster
-mov_prob, meta_p = ConScape.readasc(joinpath(datadir, "ptarmigan_raster4.asc"))
+mov_prob, meta_p = ConScape.readasc(joinpath(datadir, "ptarmigan_rasterX.asc"))
 
 
 ```
 
 ```{julia}
+#| echo: false
+#| message: false
+#| warning: false
 collect(values(meta_p))[1:end .!= 3]
 collect(values(meta_p))[1:end .!= 3] == collect(values(meta_q))[1:end .!= 3]
 
 ```
 
 ```{julia}
+#| echo: false
+#| message: false
+#| warning: false
 non_matches = findall(xor.(isnan.(mov_prob), isnan.(hab_qual)))
 mov_prob[non_matches] .= NaN
 hab_qual[non_matches] .= NaN;
 ```
 
 ```{julia}
+#| echo: false
+#| message: false
+#| warning: false
 adjacency_matrix = ConScape.graph_matrix_from_raster(mov_prob)
 
 g = ConScape.Grid(size(mov_prob)...,
@@ -79,14 +118,27 @@ coarse_target_qualities = ConScape.coarse_graining(g, 80)
      costs = ConScape.mapnz(x -> -log(x), adjacency_matrix));
 ```
 
+### 
+
 ```{julia}
+#| echo: false
+#| message: false
+#| warning: false
 ConScape.heatmap(g.source_qualities, yflip = true, 
                     title = "Map of habitat Quality", 
                     color = cgrad([:white, :green]))
-# savefig("figure_grid_outdeg.png")
+#savefig("figure_grid_outdeg.png")
+
 ```
 
+### Habitat permeability input
+
+Habitat permeability was assumed to be the inverse of habitat quality, so that areas of high quality were thought to be the easiest to move within (the most permeable) and areas with low quality are though to be the hardest to move with (the least permeable).
+
 ```{julia}
+#| echo: false
+#| message: false
+#| warning: false
 ConScape.plot_outdegrees(g, title = "Map of permeability to movement", color = cgrad(:acton))
 ```
 
@@ -96,13 +148,47 @@ ConScape.plot_outdegrees(g, title = "Map of permeability to movement", color = c
 ```
 
 ```{julia}
-@time h = ConScape.GridRSP(g, θ =1)
+#| echo: false
+#| message: false
+#| warning: false
+θ = 0.5
+@time h = ConScape.GridRSP(g, θ =θ)
 
 ```
 
 ```{julia}
+#| echo: false
+#| message: false
+#| warning: false
+targetidx, targetnodes = ConScape._targetidx_and_nodes(h.g)
+qˢ = [h.g.source_qualities[i] for i in h.g.id_to_grid_coordinate_list]
+qᵗ = [h.g.target_qualities[i] for i in targetidx];
+```
+
+```{julia}
+K = map(t -> iszero(t) ? t : exp(-t/2000), ConScape.expected_cost(h));
+```
+
+```{julia}
+#| echo: false
+#| message: false
+#| warning: false
+
+M = qˢ .* K .* qᵗ';
+
+```
+
+```{julia}
+#| echo: false
+#| message: false
+#| warning: false
+funcᵗ = vec(sum(M, dims=1)); #sum over rows
+ConScape.plot_values(g, funcᵗ, title="Functional habitat", color=cgrad(:viridis))
+```
+
+```{julia}
 kbetw = ConScape.betweenness_kweighted(h, 
-                distance_transformation=x -> exp(-x))
+                distance_transformation=x ->exp(-x))
 
 ```
 
@@ -114,16 +200,25 @@ ConScape.heatmap(kbetw, yflip=true, title="Betweenness")
 ```{julia}
 
 dists = ConScape.expected_cost(h)
-ConScape.plot_values(g, dists[:,130], title = "Ecological distances to target pixel t")
+ConScape.plot_values(g, dists[:,2], title = "Ecological distances to target pixel t")
 
 ```
 
 ```{julia}
 func = ConScape.connected_habitat(h, 
                     connectivity_function = ConScape.expected_cost,
-                    distance_transformation=x -> exp(-x/75));
+                    distance_transformation=x -> exp(-x));
 
-# func = ConScape.connected_habitat(h, distance_transformation=x -> exp(-x/75));
+# func = ConScape.connected_habitat(h, distance_transformation=x -> exp(-x));
+```
+
+```{julia}
+kbetw = ConScape.betweenness_kweighted(h, 
+                distance_transformation=x -> exp(-x/80))
+ConScape.heatmap(kbetw, yflip=true, title="Betweenness",color=cgrad(:viridis))
+
+
+
 ```
 
 ```{julia}
@@ -131,12 +226,11 @@ ConScape.heatmap(Array(func), yflip = true, title = "Functional habitat")
 ```
 
 ```{julia}
-g = ConScape.perm_wall_sim(30, 60, corridorwidths=(3,2), costs=ConScape.MinusLog()) # Generate an artificial landscape
-ConScape.plot_outdegrees(g)
+surv_prob = ConScape.survival_probability(h);
+ConScape.plot_values(g, surv_prob[:,1], title="Survival proximity")
 ```
 
 ```{julia}
-h = ConScape.GridRSP(g, θ=1)
-bet_q = ConScape.betweenness_qweighted(h)
-ConScape.heatmap(bet_q, yflip=true)
+ConScape.heatmap(ConScape.betweenness_qweighted(h), yflip = true, title = "Betweenness")
+
 ```
